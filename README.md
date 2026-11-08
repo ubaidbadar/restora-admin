@@ -8,6 +8,8 @@ A **separate internal operations portal** for Restora platform employees, not a 
 - Restaurant directory: search, pagination, recent registrations
 - Restaurant detail: branches, recent order statuses and WhatsApp number health (read-only)
 - Platform team: owner-only grant/revoke access by **verified Restora account email**
+- Security audit: historical platform-team grants and revocations, owner-only
+- System health: guarded database and Meta configuration readiness indicators
 
 The backend enforces verified sessions and platform-specific roles. A restaurant owner is **not** a platform administrator automatically.
 
