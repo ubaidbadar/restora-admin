@@ -15,7 +15,7 @@ const navigation: { id: Screen; label: string; Icon: typeof Activity }[] = [
   { id: 'system', label: 'System health', Icon: Globe2 },
 ];
 function Status({ value }: { value: string }) {
-  const ok = ['active', 'connected', 'paid', 'completed'].includes(value);
+  const ok = ['active', 'connected', 'paid', 'completed', 'configured'].includes(value);
   const pending = ['number_pending', 'unpaid', 'pending'].includes(value);
   return <span className={`status ${ok ? 'ok' : pending ? 'pending' : 'muted'}`}><span className="status-dot" />{value.replaceAll('_', ' ')}</span>;
 }
