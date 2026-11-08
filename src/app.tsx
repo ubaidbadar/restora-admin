@@ -3,7 +3,7 @@ import { Activity, ArrowLeft, ArrowRight, Building2, CheckCircle2, ChevronRight,
 import { api, errorText } from './api';
 import type { AdminMe, OverviewData, RestaurantDetail, RestaurantList, RestaurantRow, TeamMember } from './types';
 
-type Screen = 'overview' | 'restaurants' | 'team' | 'integrations';
+type Screen = 'overview' | 'restaurants' | 'team' | 'integrations' | 'activity' | 'system';
 const money = (value: number) => new Intl.NumberFormat('en-PK', { maximumFractionDigits: 0 }).format(value);
 const dateLabel = (value?: string) => value ? new Date(value).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 const navigation: { id: Screen; label: string; Icon: typeof Activity }[] = [
@@ -11,6 +11,8 @@ const navigation: { id: Screen; label: string; Icon: typeof Activity }[] = [
   { id: 'restaurants', label: 'Restaurants', Icon: Building2 },
   { id: 'integrations', label: 'WhatsApp health', Icon: MessageCircle },
   { id: 'team', label: 'Platform team', Icon: Users },
+  { id: 'activity', label: 'Access activity', Icon: Shield },
+  { id: 'system', label: 'System health', Icon: Globe2 },
 ];
 function Status({ value }: { value: string }) {
   const ok = ['active', 'connected', 'paid', 'completed'].includes(value);
@@ -176,6 +178,60 @@ function Integrations({ openRestaurants }: { openRestaurants: () => void }) {
   </div>;
 }
 
+type AuditRecord = {
+  id: string; action: string; at: string; actor: string; target: string;
+  before?: { role?: string; enabled?: boolean };
+  after: { role: string; enabled: boolean };
+};
+
+function AccessActivity({ me }: { me: AdminMe }) {
+  const [rows, setRows] = useState<AuditRecord[]>([]);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { setRows(await api<AuditRecord[]>('/platform/activity')); setError(''); }
+    catch (e) { setError(errorText(e)); }
+    finally { setLoading(false); }
+  }, []);
+  useEffect(() => { if (me.role === 'owner') void load(); }, [load, me.role]);
+  return <div className="page-stack">
+    <div className="page-title-row"><div><p className="eyebrow">SECURITY HISTORY</p><h1>Access activity</h1><p className="muted-text">Platform team access changes are recorded with the responsible account.</p></div>
+      {me.role === 'owner' && <button className="button secondary" onClick={() => void load()}><RefreshCcw size={16}/> Refresh</button>}
+    </div>
+    {me.role !== 'owner' ? <Panel title="Restricted section"><Empty title="Owner access required" text="This log is visible only to platform owners." /></Panel> :
+    <Panel title="Team access history">
+      {error && <ErrorNotice message={error} retry={() => void load()}/>}
+      {loading && <div className="loading-line">Loading access changes…</div>}
+      {!loading && !rows.length && !error && <Empty title="No recorded changes" text="Future team access grants and revocations will appear here."/>}
+      {!loading && rows.length > 0 && <div className="table-wrap"><table><thead><tr><th>Actor</th><th>Account affected</th><th>Change</th><th>Time</th></tr></thead><tbody>{rows.map(row =>
+        <tr key={row.id}><td className="table-primary">{row.actor}</td><td>{row.target}</td>
+        <td>{row.after.enabled ? 'Access enabled' : 'Access revoked'} · {row.after.role}</td><td>{dateLabel(row.at)}</td></tr>)}</tbody></table></div>}
+    </Panel>}
+  </div>;
+}
+
+type PlatformHealth = { database: string; whatsappSignup: string; checkedAt: string };
+function SystemHealth() {
+  const [health, setHealth] = useState<PlatformHealth | null>(null);
+  const [error, setError] = useState('');
+  const refresh = useCallback(async () => {
+    try { setHealth(await api<PlatformHealth>('/platform/health')); setError(''); }
+    catch (e) { setError(errorText(e)); }
+  }, []);
+  useEffect(() => { void refresh(); }, [refresh]);
+  return <div className="page-stack">
+    <div className="page-title-row"><div><p className="eyebrow">SYSTEM READINESS</p><h1>System health</h1><p className="muted-text">Configuration and database status reported by the backend. This is not an uptime monitor.</p></div>
+    <button className="button secondary" onClick={() => void refresh()}><RefreshCcw size={16}/> Refresh</button></div>
+    {error && <ErrorNotice message={error}/>}
+    <div className="detail-grid">
+      <Panel title="Database"><div className="health-row"><div><strong>MongoDB connection</strong><p>API process's database state</p></div><Status value={health?.database || 'checking'}/></div></Panel>
+      <Panel title="WhatsApp onboarding"><div className="health-row"><div><strong>Meta signup configuration</strong><p>Server-side configuration presence</p></div><Status value={health?.whatsappSignup || 'checking'}/></div></Panel>
+    </div>
+    <p className="helper">A green status is not proof of end-to-end messaging, payments, printing or external service uptime. Perform separate real-world tests before release.</p>
+  </div>;
+}
+
 export default function App() {
   const [me, setMe] = useState<AdminMe | null>(null);
   const [checking, setChecking] = useState(true);
@@ -189,7 +245,7 @@ export default function App() {
     finally { setChecking(false); }
   }, []);
   useEffect(() => { void check(); }, [check]);
-  const signOut = async () => { try { await api('/auth/sign-out', { method: 'POST' }); } catch { /* Clear UI even if server unavailable */ } setMe(null); };
+  const signOut = async () => { try { await api('/auth/sign-out', { method: 'POST' }); setMe(null); } catch { window.alert('Unable to end the server session. Check your network and try again.'); } };
   const choose = (next: Screen) => { setScreen(next); setSelected(null); setMobileOpen(false); };
   const gotoRestaurant = (id: string) => { setScreen('restaurants'); setSelected(id); };
   if (checking) return <div className="splash"><span className="brand-icon"><ShieldCheck size={25}/></span>Checking secure access…</div>;
@@ -210,6 +266,8 @@ export default function App() {
         {screen==='restaurants' && <Restaurants initialId={selected} onIdChange={setSelected}/>}
         {screen==='team' && <Team me={me}/>}
         {screen==='integrations' && <Integrations openRestaurants={() => choose('restaurants')}/>}
+        {screen==='activity' && <AccessActivity me={me}/>}
+        {screen==='system' && <SystemHealth/>}
       </main>
       <footer className="app-footer">Restora Platform Operations <span>Internal use only · Restaurant data is read-only</span></footer>
     </div>
